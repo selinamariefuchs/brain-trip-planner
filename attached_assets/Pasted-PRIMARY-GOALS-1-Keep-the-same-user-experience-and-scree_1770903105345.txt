@@ -1,0 +1,85 @@
+PRIMARY GOALS
+1) Keep the same user experience and screen flow:
+   - HOME: CityInput with mode selection (QUIZ vs PLANNING), hotel input, hands-free toggle
+   - QUIZ: Quiz screen -> on complete -> Suggestions
+   - SUGGESTIONS: Suggestions list with Load More -> add to itinerary -> continue
+   - ITINERARY: Itinerary builder with undo/redo and reorder + custom spot
+   - PROFILE: Saved trips + profile + sign out
+   - LOADING views in between
+2) Fix bugs, crashes, and “blank state” edge cases.
+3) Reduce lag time dramatically (especially around suggestions + images).
+4) Make trivia difficulty feel “just right” (not too easy, not too hard).
+
+PERFORMANCE + LAG FIXES (Must do)
+A) AI image generation is currently slow and blocks the app:
+   - Do NOT generate images sequentially with long sleeps.
+   - Implement a non-blocking strategy:
+     - Immediately show suggestions with fast placeholder images.
+     - Add AI images progressively in the background with limited concurrency (max 2 at a time).
+     - Add a toggle: “Enhance with AI photos (slower)” default OFF in beta.
+     - Cache AI images by (city + title) in localStorage to avoid re-generating.
+     - Add a circuit breaker: if 2 quota/rate-limit errors occur, stop AI image generation for that session.
+B) Suggestions generation can be slow due to heavy tool use:
+   - Split generation into two phases:
+     1) Generate 5 suggestions quickly without routes/distances.
+     2) Then enrich each suggestion with distances (optional) OR fetch distances only when the user opens a suggestion details modal.
+   - If hotelLocation is blank, do not call maps tools or attempt distances.
+   - Add timeouts and robust error handling so the UI never hangs.
+C) Prevent unnecessary re-renders:
+   - Memoize heavy components and handlers (React.memo/useCallback/useMemo).
+   - Avoid creating new Set() or arrays inline on every render where it causes child re-renders.
+   - Ensure stable keys/ids for list items (do not regenerate ids every render).
+D) Loading UX:
+   - Replace long “silent waits” with progress messaging and immediate partial results.
+   - Always allow the user to go back/cancel during long operations.
+
+TRIVIA DIFFICULTY (Must do)
+- Update quiz generation to accept parameters:
+  - difficulty: Easy / Medium / Hard
+  - count: default 8 (instead of 5)
+- Implement “balanced difficulty” by enforcing rules:
+  - Avoid trick questions and avoid kindergarten-easy questions.
+  - Options must be plausible; no obviously fake distractors.
+  - CorrectIndex must be valid 0–3.
+  - Add a validation pass on generated questions:
+    - Ensure options are unique
+    - Ensure question text isn’t duplicated
+    - Ensure funFact is 1 sentence and non-empty
+- Add an adaptive fallback:
+  - If generated questions fail validation, regenerate once.
+  - If still failing, use a curated local fallback bank for popular cities.
+
+RELIABILITY + BUG FIXING (Must do)
+- Ensure the app works even when:
+  - API key missing
+  - quota/rate limits (429)
+  - user is logged out
+  - firebase fails
+  - network is slow/offline
+- Centralize errors:
+  - Create a single error handler + toast/banner system
+  - Never crash to blank screen
+- Replace any unsafe JSON parsing with a robust parser + strict schema checks.
+- Make “Load More” safe:
+  - prevent double-click spam
+  - dedupe suggestions by title
+  - ensure it appends correctly and preserves scroll performance
+
+ARCHITECTURE CHANGES (Allowed)
+- You may refactor files, create utilities, and add small libraries if needed.
+- But DO NOT rewrite the whole app into a totally different framework.
+- Keep React + Vite + TS.
+
+DELIVERABLES
+1) Make the app run smoothly with `npm install` and `npm run dev`.
+2) Provide a short README section:
+   - how to run
+   - required env vars
+   - how caching + concurrency works
+3) Provide a summary list of the specific bugs you fixed and perf improvements.
+
+START NOW
+Step 1: Inspect the current file tree, identify the slow points and bug-prone areas.
+Step 2: Implement the performance fixes (non-blocking suggestions + optional AI images with concurrency + caching).
+Step 3: Implement improved trivia generation with difficulty + validation.
+Step 4: Run and verify the app still matches the original flow and UX.

@@ -1,0 +1,56 @@
+Implement a V1-minimum “Any City Trivia” pipeline that is fast, cached, and reliable. Keep the existing UI/flow. Do NOT add complex extra APIs (no Wikipedia, no web scraping).
+
+GOAL
+When a user types ANY city, the app generates location-specific trivia (not generic) using Google Places as the grounding source. Two difficulty levels only: Standard + Challenge.
+
+V1 PIPELINE (Server-side only)
+1) City Resolve (fast)
+- Add/Update server function resolveCity(cityText):
+  - Use Google Places Text Search (or Find Place) to resolve the city into a canonical label:
+    returns { cityLabel, placeId, lat, lng, country, region }
+  - Cache by cityText for 24h.
+  - If ambiguous, pick best match and return the formatted label (e.g., “Springfield, IL, USA”).
+
+2) City Context (fast)
+- Create getCityContext(placeId, cityLabel, latLng):
+  - Fetch 12–20 POIs with Google Places Text Search using a small set of queries:
+    “{cityLabel} top attractions”, “{cityLabel} landmarks”, “{cityLabel} museums”, “{cityLabel} parks”
+  - Dedupe by place_id.
+  - Store a compact context:
+    { cityLabel, placeId, pois: [{placeId, name, types, rating, user_ratings_total}] }
+  - Cache by placeId for 24h.
+
+3) Trivia Generation (fast + grounded)
+- Update POST /api/trivia/generate to accept:
+  { cityText OR cityPlaceId, difficulty: "Standard"|"Challenge", count: 8, excludeQuestionIds?: [] }
+- Steps inside endpoint:
+  A) resolveCity -> getCityContext
+  B) Ask AI to generate questions ONLY using the POI list + cityLabel (no made-up places).
+  C) Output strict JSON array:
+     [{ question, options[4], answerIndex, funFact, poiName(optional) }]
+- Enforce validation:
+  - options length == 4
+  - options unique
+  - answerIndex between 0–3
+  - ban generic trivia that could apply anywhere (“What is the capital…”, “Which currency…”) unless city is a country-level query.
+  - Ensure at least 50% of questions reference a POI from the provided list by name.
+- If validation fails, regenerate once. If still fails, generate from a curated fallback set of “city-generic but still specific” prompts using cityLabel (not global trivia).
+
+4) No Repeats per User (V1-friendly)
+- Create questionId = hash(cityPlaceId + difficulty + questionText).
+- Store seenQuestionIds per user in persistent storage (localStorage/Preferences or existing user storage).
+- When generating, pass excludeQuestionIds = seenQuestionIds to backend.
+- Backend filters out duplicates; if too many duplicates, request a larger batch from AI (e.g., 16) and return 8 unique.
+- If pool exhausted, show a friendly message: “You’ve mastered this city — switching to new set” and allow repeats after confirmation (or auto after exhaustion).
+
+PERFORMANCE REQUIREMENTS
+- Total time target: first trivia load should feel < 3–6 seconds on decent network.
+- Cache city resolve + POI context so repeat plays are fast.
+- Never block UI with long chained calls. Use timeouts and friendly error messages + retry.
+
+DELIVERABLES
+- List files changed.
+- Document required env vars:
+  GOOGLE_PLACES_API_KEY
+  AI_API_KEY (whatever provider is used)
+- Confirm it works for a small/random city (not only the curated big cities).

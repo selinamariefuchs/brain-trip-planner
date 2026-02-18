@@ -1,0 +1,68 @@
+You need to fix the Saved Trips functionality without redesigning the app structure.
+
+ISSUE 1:
+When I click a city under "Saved Trips", I should be able to see ALL saved itinerary spots for that specific city.
+
+Currently:
+- It either shows incomplete data
+- Or does not load properly
+- Or does not filter correctly by city
+
+REQUIRED FIX:
+- When a user clicks a saved city, navigate to a SavedTripDetail page (or modal).
+- That page must:
+  - Load all SavedPlace entries filtered by cityId or cityName (must be consistent).
+  - Display them in a list with stable keys.
+  - Show: name, category/type, notes (if any), savedAt date.
+  - Allow delete per item.
+  - Handle empty state gracefully (no crash).
+
+Ensure:
+- Data is not being overwritten accidentally.
+- Saved places persist correctly in localStorage or database.
+- No re-renders are clearing state.
+
+---
+
+ISSUE 2:
+From the Saved Trips city page, I should be able to:
+1) Continue playing trivia for that same city.
+2) Continue adding itinerary spots to that same trip.
+
+REQUIRED FIX:
+- Add two buttons at top of SavedTripDetail page:
+   - "Continue Trivia"
+   - "Add More Spots"
+
+- Continue Trivia:
+   - Navigates to Quiz screen
+   - Preselects that city automatically
+   - Preserves existing trip session if needed
+
+- Add More Spots:
+   - Navigates to Suggestions screen
+   - Loads suggestions for that same city
+   - Appends new spots to existing saved trip instead of creating duplicate trip entries
+
+---
+
+DATA INTEGRITY REQUIREMENTS:
+- Do not create duplicate trips when continuing.
+- Ensure tripId or cityId is consistently passed through navigation.
+- Use a single source of truth for saved trips.
+- Deduplicate saved spots by unique ID or title.
+
+---
+
+UX REQUIREMENTS:
+- No blank screens.
+- Add loading state if necessary.
+- Prevent double-click duplication.
+- Maintain scroll performance.
+
+---
+
+After implementing:
+1) Show the updated file tree.
+2) Explain how tripId and city state are now managed.
+3) Confirm no duplicate trip objects are created.

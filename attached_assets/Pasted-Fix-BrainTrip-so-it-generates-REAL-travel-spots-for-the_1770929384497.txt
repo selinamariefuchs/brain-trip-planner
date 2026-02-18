@@ -1,0 +1,70 @@
+Fix BrainTrip so it generates REAL travel spots for the selected city and AI-generated trivia that is balanced (not too easy, not too hard). Do not keep placeholder/generic suggestions like “City Center” or “Main Park”.
+
+REQUIREMENTS (Must)
+1) REAL ITINERARY SUGGESTIONS
+- Suggestions must be real, named places (e.g., “Millennium Park”, “Art Institute of Chicago”, “Wicker Park”, “Chicago Riverwalk”), not generic categories.
+- Implement a “grounded suggestions” pipeline:
+  A) Fetch real POIs using a Places data source (preferred: Google Places API OR Foursquare OR OpenTripMap — choose one and implement cleanly).
+  B) For each POI, store: placeId, name, address/vicinity, lat, lng, type/category.
+  C) Then call AI ONLY to generate: a 1–2 sentence description + a 1-sentence fun fact for each real POI (do not let AI invent POI names).
+- Deduplicate POIs by placeId and normalize categories.
+- If no API key is set, use a small curated fallback list per city (NYC/Chicago/Paris/Rome/Tokyo) with REAL places, not generic placeholders.
+
+2) DISTANCES FROM HOTEL (Already have hotel input)
+- Distance should be calculated correctly (no crazy numbers like 965 km in the same city).
+- Geocode hotel to lat/lng once, cache it for the trip.
+- Use Haversine for instant distance. (Optional: later add drive ETA, but not required.)
+- If hotel is blank or geocode fails, show “Distance unavailable”.
+- Cache distances by (hotelLatLng + placeId) so repeat loads are fast.
+
+3) TRIVIA MUST BE AI-GENERATED AND BALANCED
+- Trivia questions + 4 multiple-choice options + correct index + fun fact must be AI generated.
+- Only TWO difficulty levels: “Standard” and “Challenge” (remove any third level).
+- Standard: interesting but not obscure.
+- Challenge: deeper facts but not trick questions.
+- Enforce quality rules:
+  - options length == 4
+  - options unique
+  - correctIndex 0–3
+  - distractors plausible (no obviously fake answers)
+  - funFact is 1 sentence, non-empty
+- Add a validation pass: if any question fails validation, regenerate once; if still failing, use curated fallback questions for that city.
+
+4) NO USER GETS THE SAME QUESTION TWICE
+- Implement per-user question uniqueness:
+  - Create a stable questionId = hash(city + difficulty + questionText).
+  - Store seenQuestionIds per user (and optionally per city) in persistent storage (localStorage/Preferences or DB if present).
+  - When generating a new quiz, exclude seenQuestionIds: regenerate/replace any duplicates until the quiz contains all unseen questions.
+  - Keep a cap: if uniqueness cannot be satisfied after N attempts, expand pool by requesting more questions from AI and filtering.
+- Make this robust even if user is logged out (use a local anonymous user id stored in storage).
+
+5) MATCH CITY SELECTION CORRECTLY
+- Ensure the city user selects is what is used for both:
+  - Places/POIs search
+  - Trivia generation
+- Add a sanity check: if POI results are not in/near the selected city, discard and refetch with tighter parameters (city center lat/lng bounding or “+ city, country” query).
+
+IMPLEMENTATION DETAILS (Preferred)
+- Put all external API calls on the server (Express):
+  - POST /api/places/search { city, categories, limit }
+  - POST /api/trivia/generate { city, difficulty, count, excludeQuestionIds[] }
+  - POST /api/poi/enrich { city, poiList[] } (AI writes descriptions/fun facts ONLY from given POI names)
+- Keep secrets in env vars only.
+- Add caching layer:
+  - cache POI results by city+categories for 24h
+  - cache hotel geocode by hotel string
+  - cache distances by hotelLatLng+placeId
+  - cache trivia questions by city+difficulty (but respect excludeQuestionIds)
+
+ACCEPTANCE TESTS (Must pass)
+- For Chicago, the app shows at least 5 real named places.
+- Trivia correct answer is not always A; answer distribution is varied.
+- If user plays again for the same city+difficulty, at least 80% of questions are new until the pool is exhausted.
+- Distances are realistic (e.g., 0–20 miles within Chicago) and not hundreds of km.
+- No blank screens; errors show friendly messages and allow retry.
+
+DELIVERABLES
+- List files changed + explain the new data flow.
+- Show how uniqueness is enforced and where questionIds are stored.
+- Provide env var names needed for Places + AI (placeholders ok).
+Start by inspecting current generation code and replacing placeholder suggestions with grounded POI search + AI enrichment.

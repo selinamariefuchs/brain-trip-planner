@@ -1,0 +1,22 @@
+# env files (NEVER commit)
+.env
+.env.*
+!.env.example
+
+# replit / tooling (often contains secrets)
+.replit
+config/
+.replit_integrations/
+
+# node / build
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz.env
+.config/
+.replit
+server/replit_integrations/
+.replit_integrations/
+.env

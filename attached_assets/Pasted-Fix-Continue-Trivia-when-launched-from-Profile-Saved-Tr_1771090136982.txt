@@ -1,0 +1,38 @@
+Fix “Continue Trivia” when launched from Profile → Saved Trips → Trip Detail.
+
+Current bug:
+When I open a saved trip and tap “Continue Trivia”, the quiz uses default/generic questions instead of real city-specific Standard questions for that saved trip.
+
+Root cause to address:
+This flow likely does not pass/restore the correct trip context (cityLabel, cityPlaceId, difficulty) into the quiz generation call, so the backend falls back.
+
+Requirements:
+1) Persist trip identity + context
+- Ensure each saved trip has a stable tripId and includes:
+  - cityLabel (e.g., “Bangkok, Thailand”)
+  - cityPlaceId (Google Places ID for the city)
+  - lastSelectedDifficulty ("Standard" or "Challenge") OR default to "Standard"
+- When viewing Trip Detail, load the full trip object by tripId (not just city name).
+
+2) Continue Trivia must use the same generator as new trivia
+- When user taps “Continue Trivia” in Trip Detail:
+  - Navigate to quiz with tripId (and/or cityPlaceId, cityLabel, difficulty)
+  - Call POST /api/trivia/generate with:
+    { cityPlaceId, cityLabel, difficulty: "Standard"|"Challenge", count, excludeQuestionIds }
+  - excludeQuestionIds must include:
+    a) user seenQuestionIds for this city+difficulty
+    b) questions already asked in this trip (if stored)
+
+3) Remove default trivia path for this flow
+- The “Continue Trivia” flow must never call the placeholder/default trivia generator.
+- Only fallback if OpenAI fails (429/timeout) AND fallback must still be city-specific using cached cityContext POIs.
+
+4) Fix Standard difficulty tuning
+- Standard = easy-to-medium, travel/culture/location-specific.
+- Enforce: at least 50% of questions reference POIs from cityContext by name.
+- Validate schema/options; regenerate once if invalid.
+
+Deliverables:
+- Show exactly which file handles Trip Detail “Continue Trivia” button and what it now passes.
+- Show backend endpoint changes to accept cityPlaceId/cityLabel and to avoid default fallback.
+- Confirm that continuing trivia for a saved Bangkok trip produces Bangkok-specific questions, not generic defaults.

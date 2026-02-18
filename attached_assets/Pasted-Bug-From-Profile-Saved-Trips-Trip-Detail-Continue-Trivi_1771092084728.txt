@@ -1,0 +1,52 @@
+Bug: From Profile → Saved Trips → Trip Detail → Continue Trivia, the FIRST time works, but the SECOND time reverts to default settings and returns generic trivia. This must never happen.
+
+ROOT CAUSE TO FIX
+The Continue Trivia flow is relying on transient in-memory state (tripContext / screen state) that resets when navigating back and then re-entering. On re-entry, city/difficulty/tripId are missing so generator uses defaults/fallback.
+
+REQUIRED BEHAVIOR
+- Every time “Continue Trivia” is clicked from a saved trip, the quiz must be generated using the SAME saved trip context (tripId, cityLabel, cityPlaceId, difficulty).
+- Never fall back to default city/difficulty/mode for this entry path.
+
+IMPLEMENTATION REQUIREMENTS
+1) Persist and rehydrate activeTripId
+- Add persistent storage key: activeTripId
+- When user opens a Trip Detail page, set activeTripId = that tripId in storage.
+- When Continue Trivia is clicked, navigate with tripId explicitly (route param or screen state), AND set activeTripId again.
+
+2) Rehydrate trip context on quiz start (no reliance on old memory)
+- In the quiz start/initialization function:
+  - If tripId is provided, load the trip from savedTrips storage/DB using tripId
+  - Set:
+    trip.cityLabel
+    trip.cityPlaceId
+    trip.difficulty (default "Standard" if missing)
+  - Only after rehydration call /api/trivia/generate.
+- If tripId is missing, DO NOT silently default; show an error “Trip not found” and send user back to Saved Trips.
+
+3) Lock difficulty + city for saved-trip continue flow
+- Continue Trivia from a saved trip must always use that trip’s stored cityPlaceId + cityLabel.
+- Difficulty should default to "Standard" but if the user changed difficulty in that trip, persist it in the trip record and reuse it.
+
+4) Fix caching keys so defaults can’t leak
+- Ensure cache key includes cityPlaceId + difficulty:
+  trivia:${cityPlaceId}:${difficulty}
+- Ensure no cache exists keyed only by "Standard" or only by difficulty.
+
+5) Ensure generator never returns “default trivia” for this path
+- In /api/trivia/generate:
+  - If request includes tripId or cityPlaceId:
+    - NEVER use global default question bank.
+    - If OpenAI fails, return a city-specific fallback generated from cached POIs OR return an error requiring retry.
+  - Include response metadata: { source: "openai" | "cache" | "fallback", cityPlaceId, difficulty }
+
+6) Add a regression test / log
+- Add logs that print when Continue Trivia is pressed:
+  CONTINUE_TRIVIA { tripId, cityPlaceId, difficulty }
+- Add backend logs:
+  TRIVIA_SOURCE + cacheKey
+- Verify 2nd click still has same tripId/cityPlaceId and TRIVIA_SOURCE is not “fallback”.
+
+DELIVERABLES
+- Show the files changed (Trip Detail page + quiz init + storage + backend trivia endpoint).
+- Explain how tripId is persisted and rehydrated.
+- Confirm by testing: click Continue Trivia, finish/back, click Continue Trivia again → still generates valid city-specific trivia with correct settings.
