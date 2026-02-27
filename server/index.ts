@@ -27,28 +27,15 @@ app.use(express.urlencoded({ extended: false }));
 
 /* -------------------- CORS -------------------- */
 
-const allowedOrigins = [
-  "https://brain-trip-planner.onrender.com",
-  "capacitor://localhost",
-  "ionic://localhost",
-  "http://localhost:5173",
-  "http://localhost:3000",
-];
+app.use(
+  cors({
+    origin: true, // allow all origins for now (safe for debugging)
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
 
-const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-
-    console.log("CORS blocked origin:", origin);
-    return callback(new Error(`CORS not allowed for origin: ${origin}`));
-  },
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
-
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+app.options("*", cors());
 
 /* -------------------- LOGGER -------------------- */
 
@@ -78,6 +65,7 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
 
     let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+
     if (capturedJsonResponse) {
       logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
     }
@@ -119,5 +107,3 @@ app.use((req, res, next) => {
     log(`serving on http://0.0.0.0:${port}`);
   });
 })();
-
-
