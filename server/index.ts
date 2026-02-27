@@ -13,8 +13,6 @@ declare module "http" {
   }
 }
 
-/* -------------------- BODY PARSING -------------------- */
-
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -25,19 +23,15 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-/* -------------------- CORS -------------------- */
-
 app.use(
   cors({
-    origin: true, // allow all origins for now (debug)
+    origin: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
 app.options("*", cors());
-
-/* -------------------- LOGGER -------------------- */
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -52,30 +46,12 @@ export function log(message: string, source = "express") {
 
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined;
-
-  const originalResJson = res.json.bind(res);
-  res.json = (bodyJson: any, ...args: any[]) => {
-    capturedJsonResponse = bodyJson;
-    return originalResJson(bodyJson, ...args);
-  };
-
   res.on("finish", () => {
     const duration = Date.now() - start;
-
-    let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-    if (capturedJsonResponse) {
-      logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-    }
-
-    log(logLine);
+    log(`${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
   });
-
   next();
 });
-
-/* -------------------- SERVER START -------------------- */
 
 (async () => {
   await registerRoutes(httpServer, app);
