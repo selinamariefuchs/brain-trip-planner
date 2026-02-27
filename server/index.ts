@@ -31,7 +31,8 @@ app.use(
   }),
 );
 
-app.options("*", cors());
+// IMPORTANT: use regex, not "*"
+app.options(/.*/, cors());
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
