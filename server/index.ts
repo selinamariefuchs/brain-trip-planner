@@ -13,6 +13,7 @@ declare module "http" {
   }
 }
 
+/* -------------------- BODY PARSING -------------------- */
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -23,17 +24,23 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-app.use(
-  cors({
-    origin: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  }),
-);
+/* -------------------- CORS (FIXED FOR CREDENTIALS) -------------------- */
+// If the client sends credentials (cookies / credentials: "include"),
+// the server MUST send Access-Control-Allow-Credentials: true
+// and MUST NOT use wildcard origin "*".
+const corsMiddleware = cors({
+  origin: true, // reflect requesting origin
+  credentials: true, // <-- IMPORTANT FIX
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+});
+
+app.use(corsMiddleware);
 
 // IMPORTANT: use regex, not "*"
-app.options(/.*/, cors());
+app.options(/.*/, corsMiddleware);
 
+/* -------------------- LOGGER -------------------- */
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -54,6 +61,7 @@ app.use((req, res, next) => {
   next();
 });
 
+/* -------------------- SERVER START -------------------- */
 (async () => {
   await registerRoutes(httpServer, app);
 
