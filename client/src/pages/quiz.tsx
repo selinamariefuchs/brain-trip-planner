@@ -1,3 +1,4 @@
+import { API_BASE } from "@/lib/apiBase";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useTrip } from "@/lib/tripContext";
 import { Button } from "@/components/ui/button";
@@ -338,33 +339,62 @@ function QuizResults({
   }, [percentage]);
 
   const handleSaveTrip = useCallback(async () => {
-    setIsSaving(true);
-    try {
-      const res = await fetch("/api/trips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          city: trip.city,
-          cityLabel: trip.cityLabel,
-          cityPlaceId: trip.cityPlaceId,
-          mode: trip.mode === "planning" ? "planning" : "quiz",
-          difficulty: trip.difficulty,
-          score: trip.score,
-          totalQuestions: trip.questions.length,
-          spots: [],
-        }),
+  setIsSaving(true);
+
+  try {
+    const url = `${API_BASE}/api/trips`;
+    console.log("Saving trip to:", url);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        city: trip.city,
+        cityLabel: trip.cityLabel,
+        cityPlaceId: trip.cityPlaceId,
+        mode: trip.mode === "planning" ? "planning" : "quiz",
+        difficulty: trip.difficulty,
+        score: trip.score,
+        totalQuestions: trip.questions.length,
+        spots: [],
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    // ✅ First: handle HTTP errors properly
+    if (!res.ok) {
+      console.error("Save trip failed:", res.status, data);
+      toast({
+        title: "Couldn't save trip",
+        description: data?.error || `Server error (${res.status})`,
+        variant: "destructive",
       });
-      if (res.ok) {
-        const data = await res.json();
-        trip.setActiveTripId(data.id);
-        toast({ title: "Trip saved!" });
-      }
-    } catch {
-      toast({ title: "Couldn't save trip", variant: "destructive" });
-    } finally {
-      setIsSaving(false);
+      return;
     }
-  }, [trip, toast]);
+
+    // ✅ Then: ensure we got an id back
+    if (!data?.id) {
+      console.error("Save trip succeeded but no id returned:", data);
+      toast({
+        title: "Saved, but missing trip id",
+        description: "Backend returned success without an id.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    trip.setActiveTripId(data.id);
+    toast({ title: "Trip saved!" });
+  } catch (err) {
+    console.error("Save trip request error:", err);
+    toast({ title: "Couldn't save trip", variant: "destructive" });
+  } finally {
+    setIsSaving(false);
+  }
+}, [trip, toast]);
 
   const scoreCircleSize = 140;
   const strokeWidth = 8;
