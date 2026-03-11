@@ -690,43 +690,40 @@ Return ONLY JSON:
   });
 
   app.post("/api/trips", async (req, res) => {
-    try {
-      const { spots, ...tripData } = req.body;
+  try {
+    const { spots, ...tripData } = req.body;
 
-      const trip = await storage.createTrip({
-        city: tripData.city,
-        cityLabel: tripData.cityLabel || null,
-        cityPlaceId: tripData.cityPlaceId || null,
-        hotelLocation: tripData.hotelLocation || null,
-        mode: tripData.mode || "quiz",
-        difficulty: tripData.difficulty || "standard",
-        score: tripData.score ?? null,
-        totalQuestions: tripData.totalQuestions ?? null,
-      });
+    const trip = await storage.createTrip({
+      city: tripData.city,
+      cityLabel: tripData.cityLabel || null,
+      cityPlaceId: tripData.cityPlaceId || null,
+      hotelLocation: tripData.hotelLocation || null,
+      mode: tripData.mode || "quiz",
+      difficulty: tripData.difficulty || "standard",
+      score: tripData.score ?? null,
+      totalQuestions: tripData.totalQuestions ?? null,
+    });
 
-      if (Array.isArray(spots) && spots.length > 0) {
-        const spotRecords = spots.map((s: any, idx: number) => ({
-          tripId: trip.id,
-          title: s.title,
-          description: s.description || "",
-          category: s.category || "Other",
-          imageUrl: s.imageUrl || null,
-          funFact: s.funFact || null,
-          address: s.address || null,
-          placeId: s.placeId || null,
-          lat: s.lat ?? null,
-          lng: s.lng ?? null,
-          sortOrder: s.sortOrder ?? idx,
-        }));
-        await storage.addTripSpots(spotRecords);
-      }
+    if (Array.isArray(spots) && spots.length > 0) {
+      const spotRecords = spots.map((s, idx) => ({
+        tripId: trip.id,
+        title: s.title,
+        description: s.description || "",
+        category: s.category || "Other",
+        lat: s.lat || null,
+        lng: s.lng || null,
+        orderIndex: idx,
+      }));
 
-      res.status(201).json(trip);
-    } catch (error) {
-      console.error("Error creating trip:", error);
-      res.status(500).json({ error: "Failed to save trip" });
+      await storage.createTripSpots(spotRecords);
     }
-  });
+
+    res.json(trip);
+  } catch (error) {
+    console.error("Error creating trip:", error);
+    res.status(500).json({ error: "Failed to create trip" });
+  }
+});
 
   app.post("/api/trips/:id/spots", async (req, res) => {
     try {
