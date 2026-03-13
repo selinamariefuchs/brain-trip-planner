@@ -515,97 +515,133 @@ Return ONLY a JSON array:
     }
   });
 
-  app.post("/api/suggestions/generate", async (req, res) => {
-    try {
-      const { city, hotelLocation, exclude = [], excludePlaceIds = [] } = req.body;
+app.post("/api/suggestions/generate", async (req, res) => {
+  try {
+    const { city, hotelLocation, exclude = [], excludePlaceIds = [] } = req.body;
 
-      if (!city || typeof city !== "string") {
-        return res.status(400).json({ error: "City is required" });
-      }
-
-      const excludeTitles = (exclude as string[]);
-      const excludePids = (excludePlaceIds as string[]);
-
-      let hotelCoords: { lat: number; lng: number } | null = null;
-      if (hotelLocation && typeof hotelLocation === "string") {
-        hotelCoords = await geocodeCached(`${hotelLocation}, ${city}`);
-        if (!hotelCoords) {
-          hotelCoords = await geocodeCached(hotelLocation);
-        }
-      }
-
-      const pool = await fetchGooglePlacesPool(city);
-
-      if (pool.length === 0) {
-        const fallback = getCuratedFallback(city);
-        const filtered = validateSuggestions(fallback, excludeTitles, excludePids);
-        return res.json({ suggestions: filtered.slice(0, 5) });
-      }
-
-      let ranked = pool.map((p) => {
-        const distKm = hotelCoords ? haversineKm(hotelCoords.lat, hotelCoords.lng, p.lat, p.lng) : null;
-        const popScore = (p.rating || 0) * Math.log10((p.userRatingCount || 0) + 1);
-        return { ...p, distanceKm: distKm, popularityScore: popScore };
-      });
-
-      if (hotelCoords) {
-        ranked = ranked.filter((p) => p.distanceKm === null || p.distanceKm <= 100);
-      }
-
-      const popValues = ranked.map((p) => p.popularityScore).sort((a, b) => a - b);
-      const getBucket = (score: number) => {
-        const idx = popValues.findIndex((v) => v >= score);
-        return Math.floor(((idx === -1 ? popValues.length : idx) / popValues.length) * 10);
-      };
-
-      ranked.sort((a, b) => {
-        const bucketA = getBucket(a.popularityScore);
-        const bucketB = getBucket(b.popularityScore);
-        if (bucketB !== bucketA) return bucketB - bucketA;
-        if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm;
-        return 0;
-      });
-
-      const titleExcludeSet = new Set(excludeTitles.map((t) => t.toLowerCase().trim()));
-      const pidExcludeSet = new Set(excludePids.filter(Boolean));
-      const available = ranked.filter((p) => {
-        if (titleExcludeSet.has(p.title.toLowerCase().trim())) return false;
-        if (p.placeId && pidExcludeSet.has(p.placeId)) return false;
-        return true;
-      });
-
-      const batch = available.slice(0, 5);
-
-      if (batch.length === 0) {
-        const fallback = getCuratedFallback(city);
-        const filtered = validateSuggestions(fallback, excludeTitles, excludePids);
-        return res.json({ suggestions: filtered.slice(0, 5) });
-      }
-
-      const suggestions = batch.map((p) => {
-        const cached = enrichmentCache.get(p.placeId);
-        const hasCache = cached && Date.now() - cached.ts < ENRICHMENT_CACHE_TTL;
-        return {
-          title: p.title,
-          description: hasCache ? cached.data.description : "Loading details\u2026",
-          category: p.category,
-          funFact: hasCache ? cached.data.funFact : "",
-          address: p.address,
-          placeId: p.placeId,
-          lat: p.lat,
-          lng: p.lng,
-          enriched: !!hasCache,
-        };
-      });
-
-      const validated = validateSuggestions(suggestions, excludeTitles, excludePids);
-      res.json({ suggestions: validated });
-    } catch (error: any) {
-      console.error("Suggestions generation error:", error);
-      const city = req.body?.city || "the city";
-      res.json({ suggestions: getCuratedFallback(city).slice(0, 5) });
+    if (!city || typeof city !== "string") {
+      return res.status(400).json({ error: "City is required" });
     }
-  });
+
+    const excludeTitles = Array.isArray(exclude) ? exclude : [];
+    const excludePids = Array.isArray(excludePlaceIds) ? excludePlaceIds : [];
+
+    let hotelCoords: { lat: number; lng: number } | null = null;
+    if (hotelLocation && typeof hotelLocation === "string") {
+      hotelCoords = await geocodeCached(`${hotelLocation}, ${city}`);
+      if (!hotelCoords) {
+        hotelCoords = await geocodeCached(hotelLocation);
+      }
+    }
+
+    const excludeText =
+      excludeTitles.length > 0
+        ? `Do NOT include any of these places: ${excludeTitles.join(", ")}.`
+        : "Avoid repeating obvious duplicates or places already shown.";
+
+    const prompt = `
+You are a travel discovery expert.
+
+Generate 8 unique suggestions for ${city}.
+${excludeText}
+
+Requirements:
+- Mix categories across food, culture, nightlife, nature, views, neighborhoods, and hidden gems.
+- Avoid only listing the most obvious tourist attractions unless truly worth including.
+- Prefer variety and freshness.
+- Each suggestion must include:
+  - title
+  - category
+  - description
+  - address (if known, otherwise empty string)
+- Return ONLY valid JSON in this exact shape:
+
+{
+  "suggestions": [
+    {
+      "title": "string",
+      "category": "string",
+      "description": "string",
+      "address": "string"
+    }
+  ]
+}
+    `.trim();
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_completion_tokens: 1800,
+    });
+
+    const content = response.choices[0]?.message?.content || "";
+    const parsed = safeJsonParse(content);
+    const aiSuggestions = Array.isArray(parsed?.suggestions) ? parsed.suggestions : [];
+
+    if (!aiSuggestions.length) {
+      throw new Error("AI returned no suggestions");
+    }
+
+    const normalized = aiSuggestions.map((s: any) => ({
+      title: String(s.title || "").trim(),
+      category: String(s.category || "Other").trim() || "Other",
+      description: String(s.description || "").trim(),
+      address: String(s.address || "").trim(),
+      placeId: null,
+      lat: null,
+      lng: null,
+      enriched: false,
+    }));
+
+    const filtered = validateSuggestions(normalized, excludeTitles, excludePids);
+
+    let enriched = filtered;
+
+    try {
+      enriched = await Promise.all(
+        filtered.map(async (s: any) => {
+          const queryParts = [s.title, s.address, city].filter(Boolean);
+          const geo = await geocodeCached(queryParts.join(", "));
+
+          let distanceKm: number | null = null;
+          if (hotelCoords && geo) {
+            distanceKm = haversineKm(
+              hotelCoords.lat,
+              hotelCoords.lng,
+              geo.lat,
+              geo.lng
+            );
+          }
+
+          return {
+            ...s,
+            lat: geo?.lat ?? null,
+            lng: geo?.lng ?? null,
+            distanceKm,
+          };
+        })
+      );
+    } catch (enrichError) {
+      console.warn("Suggestion enrichment failed:", enrichError);
+    }
+
+    return res.json({
+      suggestions: enriched.slice(0, 8),
+    });
+  } catch (error: any) {
+    console.error("Suggestions generation error:", error);
+
+    const city = req.body?.city || "the city";
+    const fallback = getCuratedFallback(city);
+    const excludeTitles = Array.isArray(req.body?.exclude) ? req.body.exclude : [];
+    const excludePids = Array.isArray(req.body?.excludePlaceIds) ? req.body.excludePlaceIds : [];
+    const filtered = validateSuggestions(fallback, excludeTitles, excludePids);
+
+    return res.json({
+      suggestions: filtered.slice(0, 8),
+    });
+  }
+});
 
   app.post("/api/suggestions/enrich-poi", async (req, res) => {
     try {
