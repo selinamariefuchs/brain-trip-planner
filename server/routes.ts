@@ -314,7 +314,16 @@ export async function registerRoutes(
 ): Promise<Server> {
   app.post("/api/quiz/generate", async (req, res) => {
     try {
-      const { city, difficulty = "standard", count = 8, excludeQuestionIds = [], cityPlaceId: providedPlaceId, cityLabel: providedLabel } = req.body;
+      const {
+  city,
+  difficulty = "standard",
+  count = 8,
+  excludeQuestionIds = [],
+  excludeQuestions = [],
+  forceFresh = false,
+  cityPlaceId: providedPlaceId,
+  cityLabel: providedLabel,
+} = req.body;
 
       if (!city || typeof city !== "string") {
         return res.status(400).json({ error: "City is required" });
@@ -739,20 +748,6 @@ Return ONLY JSON:
       score: tripData.score ?? null,
       totalQuestions: tripData.totalQuestions ?? null,
     });
-
-    if (Array.isArray(spots) && spots.length > 0) {
-      const spotRecords = spots.map((s, idx) => ({
-        tripId: trip.id,
-        title: s.title,
-        description: s.description || "",
-        category: s.category || "Other",
-        lat: s.lat || null,
-        lng: s.lng || null,
-        orderIndex: idx,
-      }));
-
-      await storage.createTripSpots(spotRecords);
-    }
 
     res.json(trip);
   } catch (error) {
